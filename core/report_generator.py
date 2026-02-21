@@ -1,0 +1,305 @@
+# core/report_generator.py
+"""
+Generates downloadable Markdown reports for single model training and model comparison.
+Includes architecture explanation, epoch history, metrics, and analysis.
+"""
+
+from datetime import datetime
+from typing import List, Optional
+import numpy as np
+
+from core.model_trainer import TrainingResult
+from core.model_comparator import ComparisonResult
+from core.model_registry import get_registry
+
+
+class ReportGenerator:
+    """Generate comprehensive markdown reports."""
+
+    def __init__(self):
+        self.registry = get_registry()
+
+    def generate_single_model_report(self, result: TrainingResult) -> str:
+        """Generate a full report for a single trained model."""
+        model_info = self.registry.get_model(result.model_name)
+        is_clf = "classification" in result.task_type
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = []
+        lines.append(f"# 📊 Model Training Report")
+        lines.append(f"**Generated:** {now}")
+        lines.append(f"**Model:** {result.display_name}")
+        lines.append(f"**Task:** {result.task_type.replace('_', ' ').title()}")
+        lines.append("")
+
+        # ── Architecture ──
+        lines.append("---")
+        lines.append("## 1. Model Architecture\n")
+        if model_info:
+            lines.append(f"**Model:** {model_info.display_name}")
+            lines.append(f"**Source:** {model_info.source}")
+            lines.append(f"**Complexity:** {model_info.complexity}")
+            lines.append(f"\n**Description:** {model_info.description}")
+            lines.append(f"\n**How it works:**\n{model_info.architecture}")
+        else:
+            lines.append(f"**Model:** {result.display_name}")
+        lines.append("")
+
+        # ── Dataset Info ──
+        lines.append("---")
+        lines.append("## 2. Dataset Information\n")
+        lines.append(f"| Property | Value |")
+        lines.append(f"|----------|-------|")
+        lines.append(f"| Features | {len(result.feature_names)} |")
+        lines.append(f"| Training Samples | {result.train_size} |")
+        lines.append(f"| Validation Samples | {result.val_size} |")
+        lines.append(f"| Test Samples | {result.test_size} |")
+        if is_clf and result.class_names:
+            lines.append(f"| Classes | {len(result.class_names)} ({', '.join(result.class_names[:10])}) |")
+        lines.append("")
+
+        # ── Training Configuration ──
+        lines.append("---")
+        lines.append("## 3. Training Configuration\n")
+        lines.append(f"| Parameter | Value |")
+        lines.append(f"|-----------|-------|")
+        lines.append(f"| Total Epochs | {result.total_epochs} |")
+        lines.append(f"| Total Training Time | {result.total_time:.2f} seconds |")
+        lines.append(f"| Data Split | 70% train / 10% val / 20% test |")
+        lines.append(f"| Feature Scaling | StandardScaler |")
+        lines.append("")
+
+        # ── Evaluation Metrics ──
+        lines.append("---")
+        lines.append("## 4. Evaluation Metrics (Test Set)\n")
+        lines.append(f"| Metric | Value |")
+        lines.append(f"|--------|-------|")
+        for k, v in result.metrics.items():
+            lines.append(f"| {k.replace('_', ' ').title()} | {v:.6f} |")
+        lines.append("")
+
+        # ── Performance Analysis ──
+        lines.append("---")
+        lines.append("## 5. Performance Analysis\n")
+        lines.append(self._analyze_performance(result))
+        lines.append("")
+
+        # ── Epoch History ──
+        lines.append("---")
+        lines.append("## 6. Epoch-by-Epoch Training History\n")
+        lines.append("| Epoch | Train Score | Val Score | Train Loss | Val Loss | Time (s) |")
+        lines.append("|-------|-------------|-----------|------------|----------|----------|")
+        for e in result.epoch_history:
+            lines.append(f"| {e.epoch} | {e.train_score:.6f} | {e.val_score:.6f} | {e.train_loss:.6f} | {e.val_loss:.6f} | {e.elapsed_time:.2f} |")
+        lines.append("")
+
+        # ── Feature Importances ──
+        if result.feature_importances is not None:
+            lines.append("---")
+            lines.append("## 7. Feature Importances (Top 15)\n")
+            idx = np.argsort(result.feature_importances)[-15:][::-1]
+            lines.append("| Rank | Feature | Importance |")
+            lines.append("|------|---------|------------|")
+            for rank, i in enumerate(idx, 1):
+                lines.append(f"| {rank} | {result.feature_names[i]} | {result.feature_importances[i]:.6f} |")
+            lines.append("")
+
+        # ── Overfitting Analysis ──
+        lines.append("---")
+        lines.append("## 8. Overfitting Analysis\n")
+        lines.append(self._overfitting_analysis(result))
+        lines.append("")
+
+        lines.append("---")
+        lines.append(f"*Report generated by Dataset Curation Agent on {now}*")
+
+        return "\n".join(lines)
+
+    def generate_comparison_report(self, comparison: ComparisonResult) -> str:
+        """Generate a comparison report for multiple models."""
+        results = comparison.results
+        is_clf = "classification" in results[0].task_type
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = []
+        lines.append(f"# 📊 Model Comparison Report")
+        lines.append(f"**Generated:** {now}")
+        lines.append(f"**Models:** {', '.join(r.display_name for r in results)}")
+        lines.append(f"**Task:** {results[0].task_type.replace('_', ' ').title()}")
+        lines.append(f"**Winner:** 🏆 {comparison.winner}")
+        lines.append("")
+
+        # ── Architecture Summary ──
+        lines.append("---")
+        lines.append("## 1. Model Architectures\n")
+        for r in results:
+            model_info = self.registry.get_model(r.model_name)
+            lines.append(f"### {r.display_name}")
+            if model_info:
+                lines.append(f"**Complexity:** {model_info.complexity} | **Source:** {model_info.source}")
+                lines.append(f"\n{model_info.description}")
+                lines.append(f"\n**Architecture:** {model_info.architecture}")
+            lines.append("")
+
+        # ── Metrics Comparison Table ──
+        lines.append("---")
+        lines.append("## 2. Metrics Comparison\n")
+        model_names = [r.display_name for r in results]
+        header = "| Metric | " + " | ".join(model_names) + " | Best |"
+        separator = "|--------|" + "|".join(["--------"] * len(model_names)) + "|------|"
+        lines.append(header)
+        lines.append(separator)
+
+        for metric, values in comparison.metric_comparison.items():
+            row = f"| {metric.replace('_', ' ').title()} |"
+            best_name = ""
+            best_val = -float("inf")
+            # For loss metrics, lower is better
+            lower_better = metric in ("mse", "rmse", "mae", "mape", "log_loss")
+
+            for name in model_names:
+                val = values.get(name)
+                if val is not None:
+                    row += f" {val:.6f} |"
+                    if lower_better:
+                        if best_val == -float("inf") or val < -best_val:
+                            best_val = -val
+                            best_name = name
+                    else:
+                        if val > best_val:
+                            best_val = val
+                            best_name = name
+                else:
+                    row += " N/A |"
+            row += f" {best_name} |"
+            lines.append(row)
+        lines.append("")
+
+        # ── Training Time ──
+        lines.append("---")
+        lines.append("## 3. Training Time Comparison\n")
+        lines.append("| Model | Time (s) | Epochs |")
+        lines.append("|-------|----------|--------|")
+        for r in results:
+            lines.append(f"| {r.display_name} | {r.total_time:.2f} | {r.total_epochs} |")
+        lines.append("")
+
+        # ── Per-Model Epoch History ──
+        lines.append("---")
+        lines.append("## 4. Epoch History\n")
+        for r in results:
+            lines.append(f"### {r.display_name}")
+            lines.append("| Epoch | Train Score | Val Score | Train Loss | Val Loss |")
+            lines.append("|-------|-------------|-----------|------------|----------|")
+            # Show first 5, last 5 if too many epochs
+            history = r.epoch_history
+            if len(history) > 20:
+                for e in history[:5]:
+                    lines.append(f"| {e.epoch} | {e.train_score:.6f} | {e.val_score:.6f} | {e.train_loss:.6f} | {e.val_loss:.6f} |")
+                lines.append(f"| ... | ... | ... | ... | ... |")
+                for e in history[-5:]:
+                    lines.append(f"| {e.epoch} | {e.train_score:.6f} | {e.val_score:.6f} | {e.train_loss:.6f} | {e.val_loss:.6f} |")
+            else:
+                for e in history:
+                    lines.append(f"| {e.epoch} | {e.train_score:.6f} | {e.val_score:.6f} | {e.train_loss:.6f} | {e.val_loss:.6f} |")
+            lines.append("")
+
+        # ── Justification ──
+        lines.append("---")
+        lines.append("## 5. Analysis & Justification\n")
+        lines.append(f"### Why {comparison.winner} Performs Best\n")
+        lines.append(comparison.winner_reason)
+        lines.append("")
+
+        for r in results:
+            lines.append(f"### {r.display_name} Performance Analysis")
+            lines.append(self._analyze_performance(r))
+            lines.append("")
+
+        # ── Overfitting check for each model ──
+        lines.append("---")
+        lines.append("## 6. Overfitting Analysis\n")
+        for r in results:
+            lines.append(f"### {r.display_name}")
+            lines.append(self._overfitting_analysis(r))
+            lines.append("")
+
+        lines.append("---")
+        lines.append(f"*Report generated by Dataset Curation Agent on {now}*")
+
+        return "\n".join(lines)
+
+    def _analyze_performance(self, result: TrainingResult) -> str:
+        """Generate performance analysis text."""
+        is_clf = "classification" in result.task_type
+        lines = []
+
+        if is_clf:
+            acc = result.metrics.get("accuracy", 0)
+            f1 = result.metrics.get("f1_score", 0)
+            prec = result.metrics.get("precision", 0)
+            rec = result.metrics.get("recall", 0)
+
+            if acc > 0.95:
+                lines.append(f"The model achieves **excellent accuracy ({acc:.2%})** on the test set. This suggests the model has learned strong discriminative patterns in the data.")
+            elif acc > 0.85:
+                lines.append(f"The model achieves **good accuracy ({acc:.2%})**. There may be room for improvement through hyperparameter tuning or feature engineering.")
+            elif acc > 0.7:
+                lines.append(f"The model achieves **moderate accuracy ({acc:.2%})**. Consider feature engineering, handling class imbalance, or trying more complex models.")
+            else:
+                lines.append(f"The model achieves **low accuracy ({acc:.2%})**. The task may be inherently difficult, the data may need better preprocessing, or a different model family may be more appropriate.")
+
+            if prec > rec + 0.1:
+                lines.append(f"\nPrecision ({prec:.2%}) is notably higher than recall ({rec:.2%}), indicating the model is conservative — when it predicts a class, it's usually correct, but it misses some true positives.")
+            elif rec > prec + 0.1:
+                lines.append(f"\nRecall ({rec:.2%}) is notably higher than precision ({prec:.2%}), indicating the model catches most positive cases but also has more false positives.")
+            else:
+                lines.append(f"\nPrecision ({prec:.2%}) and recall ({rec:.2%}) are balanced, with F1 score of {f1:.2%}.")
+        else:
+            r2 = result.metrics.get("r2", 0)
+            rmse = result.metrics.get("rmse", 0)
+            mae = result.metrics.get("mae", 0)
+
+            if r2 > 0.9:
+                lines.append(f"The model achieves **excellent R² ({r2:.4f})**, explaining {r2:.1%} of variance. The predictions closely follow actual values.")
+            elif r2 > 0.7:
+                lines.append(f"The model achieves **good R² ({r2:.4f})**. Feature engineering or a more complex model could improve predictions.")
+            elif r2 > 0.5:
+                lines.append(f"The model achieves **moderate R² ({r2:.4f})**. Significant variance remains unexplained — consider non-linear models or additional features.")
+            else:
+                lines.append(f"The model achieves **low R² ({r2:.4f})**. The linear/simple relationship may not capture the underlying patterns. Try ensemble or deep learning models.")
+
+            lines.append(f"\nRMSE: {rmse:.4f}, MAE: {mae:.4f}. {'Large RMSE relative to MAE suggests the model struggles with outlier predictions.' if rmse > mae * 1.5 else 'RMSE and MAE are proportional, suggesting consistent error distribution.'}")
+
+        return "\n".join(lines)
+
+    def _overfitting_analysis(self, result: TrainingResult) -> str:
+        """Analyze overfitting from training history."""
+        if not result.epoch_history:
+            return "No epoch history available for overfitting analysis."
+
+        last = result.epoch_history[-1]
+        gap = last.train_score - last.val_score
+
+        lines = []
+        lines.append(f"**Final Train Score:** {last.train_score:.6f}")
+        lines.append(f"**Final Val Score:** {last.val_score:.6f}")
+        lines.append(f"**Train-Val Gap:** {gap:.6f}")
+
+        if gap > 0.15:
+            lines.append(f"\n⚠️ **Significant overfitting detected** (gap = {gap:.4f}). The model memorizes training data but doesn't generalize well. Consider: regularization, fewer epochs, data augmentation, or simpler models.")
+        elif gap > 0.05:
+            lines.append(f"\n⚡ **Mild overfitting** (gap = {gap:.4f}). Some generalization loss but within acceptable range. Early stopping or light regularization may help.")
+        elif gap < -0.02:
+            lines.append(f"\n🔄 **Underfitting possible** (val > train by {abs(gap):.4f}). The model may be too simple or training data may not represent the validation distribution well.")
+        else:
+            lines.append(f"\n✅ **Good generalization** (gap = {gap:.4f}). Train and validation scores are close, suggesting the model generalizes well.")
+
+        # Check for divergence in later epochs
+        if len(result.epoch_history) > 10:
+            mid = len(result.epoch_history) // 2
+            mid_gap = result.epoch_history[mid].train_score - result.epoch_history[mid].val_score
+            if gap > mid_gap + 0.05:
+                lines.append(f"\n📈 The train-val gap widened from {mid_gap:.4f} (mid-training) to {gap:.4f} (end). This suggests the model started overfitting in later epochs. Consider using fewer epochs or early stopping.")
+
+        return "\n".join(lines)
