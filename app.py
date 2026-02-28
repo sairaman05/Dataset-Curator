@@ -2,7 +2,8 @@
 Dataset Curation Agent — Main Application
 Sprint 1: Upload → Auto-Clean → Profile → Visualize
 Sprint 2: Automated EDA → Insight Detection → Storytelling
-Sprint 3: Auto ML Model Selection → Training → Evaluation (REWRITTEN)
+Sprint 3: Feature Engineering → Interactive transforms, selection, export
+Sprint 4: Auto ML Model Selection → Training → Evaluation
 """
 
 import streamlit as st
@@ -27,6 +28,7 @@ from ui.eda_view import (
     render_eda_recommendations,
     render_eda_report_download,
 )
+from ui.fe_view import render_fe_tab
 from ui.ml_view import render_ml_tab
 from ui.styles import section_header
 from utils.helpers import dataframe_to_excel_bytes
@@ -50,12 +52,12 @@ if not uploaded_file:
     st.markdown(
         """
         <div style="padding: 2rem 0;">
-            <div class="hero-badge">Sprint 3 · Active</div>
-            <h1 style="margin-bottom: 0.3rem;">Dataset Curation Agent</h1>
+            <div class="hero-badge">Sprint 4 · Active</div>
+            <h1 style="margin-bottom: 0.3rem;">DataCure !</h1>
             <p class="hero-subtitle">
                 Upload your messy data — the agent handles cleaning, profiling, 
-                insight detection, storytelling, and now <strong style="color:#a5b4fc;">ML model 
-                selection & training</strong> automatically.
+                insight detection, <strong style="color:#c084fc;">feature engineering</strong>,
+                and <strong style="color:#a5b4fc;">ML model training</strong> automatically.
             </p>
             <div class="feature-grid">
                 <div class="feature-pill">
@@ -69,14 +71,14 @@ if not uploaded_file:
                     <div class="desc">Outliers, correlations, imbalances</div>
                 </div>
                 <div class="feature-pill">
+                    <div class="icon">⚙️</div>
+                    <div class="label">Feature Engineering</div>
+                    <div class="desc">Encoding, scaling, selection, interactions</div>
+                </div>
+                <div class="feature-pill">
                     <div class="icon">🤖</div>
                     <div class="label">Auto ML</div>
                     <div class="desc">Smart model selection & training</div>
-                </div>
-                <div class="feature-pill">
-                    <div class="icon">📈</div>
-                    <div class="label">Live Training</div>
-                    <div class="desc">Progress tracking & evaluation</div>
                 </div>
             </div>
         </div>
@@ -109,8 +111,9 @@ if run_clicked or "result" in st.session_state:
             except Exception as e:
                 st.error(f"❌ Error during EDA: {str(e)}")
 
-        # Clear ALL ML state on new upload
+        # Clear FE + ML state on new upload
         for key in [
+            "fe_agent", "fe_engineered_df",
             "ml_agent", "ml_analysis", "ml_recommendations", "ml_all_models",
             "ml_single_result", "ml_cmp_result_a", "ml_cmp_result_b", "ml_comparison",
         ]:
@@ -136,10 +139,11 @@ if run_clicked or "result" in st.session_state:
             unsafe_allow_html=True,
         )
 
-        # ── Three Main Tabs ──
-        tab_clean, tab_eda, tab_ml = st.tabs([
+        # ── Four Main Tabs ──
+        tab_clean, tab_eda, tab_fe, tab_ml = st.tabs([
             "🧹 Clean & Profile",
             "🔍 EDA & Insights",
+            "⚙️ Feature Engineering",
             "🤖 ML Training",
         ])
 
@@ -200,5 +204,10 @@ if run_clicked or "result" in st.session_state:
             else:
                 st.info("EDA results not available. Please re-run the analysis.")
 
+        with tab_fe:
+            render_fe_tab(result.cleaned_df)
+
         with tab_ml:
-            render_ml_tab(result.cleaned_df)
+            # Use feature-engineered data if available, otherwise cleaned data
+            ml_df = st.session_state.get("fe_engineered_df", result.cleaned_df)
+            render_ml_tab(ml_df)

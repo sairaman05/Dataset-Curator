@@ -30,6 +30,15 @@ RANDOM_STATE = 42
 CLASSIFICATION_UNIQUE_THRESHOLD = 20
 CHART_HEIGHT = 400
 
+# ─── Feature Engineering ──────────────────────────────
+POLY_MAX_DEGREE = 3
+POLY_MAX_FEATURES = 10           # Max features for polynomial (combinatorial explosion)
+HIGH_CARDINALITY_ENCODE_TOP_N = 20  # Top N categories for frequency/target encoding
+DATETIME_CYCLICAL = True         # sin/cos encode month, dayofweek, hour
+VARIANCE_THRESHOLD_DEFAULT = 0.01
+CORRELATION_DROP_THRESHOLD = 0.95  # Drop one of highly correlated pair
+MAX_BINS_DISCRETIZE = 10
+
 # Models to SKIP from auto-discovery (unstable, deprecated, or meta-estimators)
 SKIP_MODELS = {
     # Meta-estimators / wrappers (need sub-estimators)
@@ -41,17 +50,29 @@ SKIP_MODELS = {
     "ClassifierChain", "RegressorChain",
     "OneVsOneClassifier", "OneVsRestClassifier",
     "OutputCodeClassifier",
+    "SelfTrainingClassifier",          # Requires estimator= param
     # Require special input
     "CalibratedClassifierCV",
     "IsotonicRegression",
     "MultiTaskElasticNet", "MultiTaskElasticNetCV",
     "MultiTaskLasso", "MultiTaskLassoCV",
     "RadiusNeighborsClassifier", "RadiusNeighborsRegressor",
+    # Require non-negative features (StandardScaler produces negatives)
+    "CategoricalNB",
+    "ComplementNB",
+    "MultinomialNB",
+    # Require strictly positive target values
+    "GammaRegressor",
+    "PoissonRegressor",
+    # Niche models with restrictive constraints
+    "CCA",                             # n_components must not exceed min(n_features, n_targets)
+    "PLSRegression", "PLSCanonical",
+    "OrthogonalMatchingPursuitCV",     # Crashes when n_atoms > n_features
+    "QuadraticDiscriminantAnalysis",   # Crashes on rare classes (covariance not full rank)
     # Dummy / baseline
     "DummyClassifier", "DummyRegressor",
     # Unstable or niche
     "GaussianProcessClassifier", "GaussianProcessRegressor",
-    "PLSRegression", "PLSCanonical",
     "NuSVC", "NuSVR",
     "QuantileRegressor",
     # Deprecated

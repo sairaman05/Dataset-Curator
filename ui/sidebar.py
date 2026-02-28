@@ -23,7 +23,7 @@ def render_sidebar() -> tuple:
                     color: #f1f5f9;
                     letter-spacing: -0.03em;
                     line-height: 1.2;
-                ">✦ Curation Agent</div>
+                ">Data Cure !</div>
                 <div style="
                     font-family: 'DM Sans', sans-serif;
                     font-size: 0.72rem;
